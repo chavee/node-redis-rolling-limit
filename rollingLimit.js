@@ -4,6 +4,13 @@ var util = require('util'),
     path = require('path'),
     luaScript = fs.readFileSync(path.join(__dirname, './lua/rollingLimit.lua'), 'utf8');
 
+var errormsg = {
+    "000" : "OK",
+    "100" : "Usual rate limit exceeded",
+    "200" : "Backdate rate limit exceeded",
+    "300" : "Illegal backdate update",
+}
+
 function RollingLimit(options) {
     if (typeof options !== 'object' || options === null) {
         throw new TypeError('options must be an object');
@@ -30,20 +37,34 @@ function RollingLimit(options) {
     });
 }
 
-RollingLimit.prototype.use = function(id, amt, cb) {
-    var amount = amt,
-        callback = cb,
-        _this = this;
-    if (typeof amount === 'function' || amount == null) {
-        callback = amount;
-        amount = 1;
+//RollingLimit.prototype.use = function(id, amt, cb) {
+RollingLimit.prototype.use = function(id, opt, callback) {
+    var amount = 1;
+    var nowMS = Date.now();
+    var timeMS = nowMS; 
+    var _this = this;
+
+    if (typeof opt === 'function' || opt == null) {
+        callback = opt;
+        opt = null;
     }
     if (callback && typeof callback !== 'function') {
         throw new TypeError('callback must be a function');
     }
+
+    if (opt) {
+        if (opt.amount || opt.amount==0) {
+            amount = opt.amount;
+        }
+
+        if (opt.time) {
+            timeMS = opt.time;
+        }
+    }
+
     log.debug('rollinglimit: use called', {id: id, amount: amount});
     return new Promise(function(resolve, reject) {
-        _this.redis.rollingLimit(_this.prefix + id, _this.limit, _this.interval, Date.now(), amount, function(err, res) {
+        _this.redis.rollingLimit(_this.prefix + id, _this.limit, _this.interval, timeMS, nowMS, amount, function(err, res) {
             if (err) {
                 log.error('rollinglimit: error calling lua', {
                     id: id,
